@@ -1,0 +1,73 @@
+version: '3'
+services:
+  mongodb:
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    image: mongo:latest
+    container_name: vtvmongodb
+    volumes:
+      - mongodb_data:/data/db
+    command: mongod --auth
+    ports: 
+      - 27017:27017
+    networks:
+      - VTV-Crawler
+
+  vtvscraper:
+    build:
+      context: ./vtv-scrapy
+      dockerfile: vtv-scrapy-dev.Dockerfile
+    container_name: vtvscraper
+    depends_on:
+      - mongodb
+    networks:
+      - VTV-Crawler
+      
+  crawler-fe:
+    image: node:18-alpine
+    container_name: Crawler-FE
+    volumes:
+      - ./crawler-frontend:/home/crawler-frontend
+    ports: 
+      - 8080:8080
+    working_dir: /home/crawler-frontend
+    command: sh -c "yarn install && yarn dev" tail dev/null
+    environment:
+      VITE_CRAWLER_BACKEND_URL: /api/v1
+    tty: true
+    networks:
+      - VTV-Crawler
+
+  crawler-be:
+    build:
+      context: ./crawler-backend/
+      dockerfile: dev.Dockerfile
+    container_name: Crawler-BE
+    env_file:
+      - ./crawler-backend/app/.env
+    volumes:
+      - ./crawler-backend/app:/home/crawler/app
+    depends_on:
+      - mongodb
+    ports:
+      - '8081:8888'
+    networks:
+      - VTV-Crawler
+  
+  nginx:
+    image: nginx
+    volumes:
+      - ./.nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - crawler-be
+      - crawler-fe
+    ports:
+      - 80:80
+    networks:
+      - VTV-Crawler
+volumes:
+  mongodb_data:
+networks:
+  VTV-Crawler:
